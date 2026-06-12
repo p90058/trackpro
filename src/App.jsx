@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
+import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import { Toaster, toast } from 'sonner';
 import { 
   MapPin, Battery, AlertTriangle, Navigation, Smartphone, 
@@ -49,7 +49,6 @@ function Login({ onLogin }) {
       return;
     }
 
-    // Actualizar último login
     await supabase
       .from('users')
       .update({ last_login: new Date().toISOString() })
@@ -79,7 +78,7 @@ function Login({ onLogin }) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white"
-              placeholder="admin@trackpro.com"
+              placeholder="p90058@gmail.com"
               required
             />
           </div>
@@ -106,8 +105,8 @@ function Login({ onLogin }) {
         </form>
 
         <div className="mt-6 p-4 bg-slate-900 rounded-lg">
-          <p className="text-slate-400 text-xs mb-2">Credenciales de prueba:</p>
-          <p className="text-slate-300 text-xs">Admin: admin@trackpro.com / admin123</p>
+          <p className="text-slate-400 text-xs mb-2">Administrador:</p>
+          <p className="text-slate-300 text-xs">p90058@gmail.com / P91357642</p>
         </div>
       </div>
     </div>
@@ -156,7 +155,6 @@ function Dashboard({ user }) {
     try {
       let tagsQuery = supabase.from('tags').select('*');
       
-      // Si no es admin, solo ver tags asignados
       if (user.role !== 'admin') {
         const { data: assignments } = await supabase
           .from('tag_assignments')
@@ -228,7 +226,7 @@ function Dashboard({ user }) {
         <div>
           <h1 className="text-3xl font-bold text-white">Dashboard</h1>
           <p className="text-slate-400">
-            {user.role === 'admin' ? 'Panel de Administrador' : 'Mis Dispositivos'}
+            {user.role === 'admin' ? 'Panel de Administrador Maestro' : 'Mis Dispositivos'}
           </p>
         </div>
         <button onClick={loadData} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-lg font-medium flex items-center gap-2">
@@ -390,7 +388,7 @@ function AdminPanel({ user }) {
     if (error) {
       toast.error('Error al crear usuario');
     } else {
-      toast.success('Usuario creado');
+      toast.success('Usuario creado exitosamente');
       form.reset();
       loadUsers();
     }
@@ -401,7 +399,7 @@ function AdminPanel({ user }) {
     if (error) {
       toast.error('Error al asignar tag');
     } else {
-      toast.success('Tag asignado');
+      toast.success('Tag asignado correctamente');
     }
   };
 
@@ -413,18 +411,24 @@ function AdminPanel({ user }) {
     if (error) {
       toast.error('Error al actualizar alarma');
     } else {
-      toast.success('Alarma actualizada');
+      toast.success('Configuración de alarma actualizada');
       loadAlarmSettings();
     }
   };
 
   if (user.role !== 'admin') {
-    return <div className="p-4 text-center text-red-500">Acceso denegado</div>;
+    return <div className="p-4 text-center text-red-500">Acceso denegado - Solo administradores</div>;
   }
 
   return (
     <div className="p-4 max-w-7xl mx-auto space-y-6">
-      <h1 className="text-3xl font-bold text-white">Panel de Administración</h1>
+      <div className="flex items-center gap-3">
+        <Shield className="text-emerald-500" size={32} />
+        <div>
+          <h1 className="text-3xl font-bold text-white">Panel de Administración</h1>
+          <p className="text-slate-400">Control total del sistema</p>
+        </div>
+      </div>
 
       {/* Tabs */}
       <div className="flex space-x-2 border-b border-slate-700">
@@ -449,23 +453,29 @@ function AdminPanel({ user }) {
       {activeTab === 'users' && (
         <div className="space-y-6">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
-            <h2 className="text-xl font-semibold text-white mb-4">Crear Nuevo Usuario</h2>
+            <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+              <Plus size={20} className="text-emerald-500" />
+              Crear Nuevo Usuario
+            </h2>
             <form onSubmit={handleCreateUser} className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <input name="email" type="email" placeholder="Email" className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white" required />
-              <input name="name" type="text" placeholder="Nombre" className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white" required />
+              <input name="name" type="text" placeholder="Nombre completo" className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white" required />
               <input name="password" type="password" placeholder="Contraseña" className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white" required />
               <select name="role" className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white">
                 <option value="user">Usuario Normal</option>
                 <option value="admin">Administrador</option>
               </select>
-              <button type="submit" className="md:col-span-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg">
+              <button type="submit" className="md:col-span-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg transition-colors">
                 Crear Usuario
               </button>
             </form>
           </div>
 
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
-            <h2 className="text-xl font-semibold text-white mb-4">Usuarios Existentes</h2>
+            <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+              <Users size={20} className="text-emerald-500" />
+              Usuarios Existentes
+            </h2>
             <div className="space-y-2">
               {users.map(u => (
                 <div key={u.id} className="flex justify-between items-center p-4 bg-slate-900 rounded-lg">
@@ -492,12 +502,18 @@ function AdminPanel({ user }) {
       {activeTab === 'tags' && (
         <div className="space-y-6">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
-            <h2 className="text-xl font-semibold text-white mb-4">Asignar Tags a Usuarios</h2>
+            <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+              <MapPin size={20} className="text-emerald-500" />
+              Asignar Tags a Usuarios
+            </h2>
             <div className="space-y-4">
               {tags.map(tag => (
                 <div key={tag.id} className="p-4 bg-slate-900 rounded-lg">
                   <div className="flex justify-between items-center mb-2">
                     <p className="text-white font-medium">{tag.name} ({tag.tag_id})</p>
+                    <span className={`px-3 py-1 rounded-full text-xs ${tag.status === 'active' ? 'bg-green-600' : 'bg-gray-600'} text-white`}>
+                      {tag.status}
+                    </span>
                   </div>
                   <select
                     onChange={(e) => {
@@ -525,16 +541,23 @@ function AdminPanel({ user }) {
       {activeTab === 'alarms' && (
         <div className="space-y-6">
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
-            <h2 className="text-xl font-semibold text-white mb-4">Configuración de Alarmas</h2>
+            <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+              <Bell size={20} className="text-emerald-500" />
+              Configuración de Alarmas por Tag
+            </h2>
+            <p className="text-slate-400 mb-4">Configura las alarmas de movimiento, velocidad y batería para cada dispositivo</p>
             <div className="space-y-4">
               {alarmSettings.map(setting => (
                 <div key={setting.id} className="p-4 bg-slate-900 rounded-lg space-y-4">
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center border-b border-slate-700 pb-2">
                     <p className="text-white font-medium">{setting.tags?.name} ({setting.tags?.tag_id})</p>
+                    <Settings size={18} className="text-slate-400" />
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <label className="text-slate-400 text-xs mb-1 block">Movimiento (metros)</label>
+                      <label className="text-slate-400 text-xs mb-1 block flex items-center gap-1">
+                        <MapPin size={12} /> Movimiento (metros)
+                      </label>
                       <input
                         type="number"
                         defaultValue={setting.movement_threshold_meters}
@@ -545,7 +568,9 @@ function AdminPanel({ user }) {
                       />
                     </div>
                     <div>
-                      <label className="text-slate-400 text-xs mb-1 block">Velocidad (km/h)</label>
+                      <label className="text-slate-400 text-xs mb-1 block flex items-center gap-1">
+                        <Activity size={12} /> Velocidad (km/h)
+                      </label>
                       <input
                         type="number"
                         defaultValue={setting.speed_threshold_kmh}
@@ -556,7 +581,9 @@ function AdminPanel({ user }) {
                       />
                     </div>
                     <div>
-                      <label className="text-slate-400 text-xs mb-1 block">Batería baja (%)</label>
+                      <label className="text-slate-400 text-xs mb-1 block flex items-center gap-1">
+                        <Battery size={12} /> Batería baja (%)
+                      </label>
                       <input
                         type="number"
                         defaultValue={setting.battery_low_threshold}
@@ -603,7 +630,7 @@ function MobileTracking({ user }) {
     }
 
     setTracking(true);
-    toast.info('Iniciando rastreo...');
+    toast.info('Iniciando rastreo en segundo plano...');
 
     if ('geolocation' in navigator) {
       const watchId = navigator.geolocation.watchPosition(
@@ -675,7 +702,7 @@ function MobileTracking({ user }) {
             <div className="bg-emerald-600/20 border border-emerald-500/50 rounded-lg p-4">
               <div className="flex items-center justify-center gap-2 text-emerald-400">
                 <Navigation className="animate-pulse" size={20} />
-                <span>Rastreando...</span>
+                <span>Rastreando en tiempo real...</span>
               </div>
             </div>
             {position && (
@@ -685,15 +712,27 @@ function MobileTracking({ user }) {
                 <p>🚀 Vel: {position.speed} m/s</p>
               </div>
             )}
-            <button onClick={stopTracking} className="w-full bg-red-600 text-white font-bold py-3 rounded-lg">
-              Detener
+            <button onClick={stopTracking} className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-lg transition-colors">
+              Detener Rastreo
             </button>
           </div>
         ) : (
-          <button onClick={startTracking} className="w-full bg-emerald-600 text-white font-bold py-3 rounded-lg">
+          <button onClick={startTracking} className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg transition-colors">
             Iniciar Rastreo 24/7
           </button>
         )}
+      </div>
+
+      <div className="bg-blue-600/10 border border-blue-500/30 rounded-lg p-4 text-left">
+        <h3 className="text-blue-400 font-semibold mb-2 flex items-center gap-2">
+          <Navigation size={18} /> Características
+        </h3>
+        <ul className="text-sm text-slate-400 space-y-1">
+          <li>✅ Envía ubicación cada 5 segundos</li>
+          <li>✅ Funciona en segundo plano</li>
+          <li>✅ Bajo consumo de batería</li>
+          <li>✅ Reconexión automática</li>
+        </ul>
       </div>
     </div>
   );
@@ -731,6 +770,7 @@ function Navbar({ user, onLogout }) {
             <div className="flex items-center gap-2 ml-4 pl-4 border-l border-slate-700">
               <User size={18} className="text-slate-400" />
               <span className="text-slate-300 text-sm">{user.name}</span>
+              {user.role === 'admin' && <span className="px-2 py-0.5 bg-purple-600 text-white text-xs rounded-full">ADMIN</span>}
               <button onClick={onLogout} className="text-slate-400 hover:text-red-500">
                 <LogOut size={18} />
               </button>
@@ -774,7 +814,7 @@ export default function App() {
   const handleLogout = () => {
     localStorage.removeItem('user');
     setUser(null);
-    toast.success('Sesión cerrada');
+    toast.success('Sesión cerrada correctamente');
   };
 
   if (!user) {
