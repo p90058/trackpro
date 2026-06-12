@@ -5,7 +5,7 @@ import { Toaster, toast } from 'sonner';
 import { 
   MapPin, Battery, AlertTriangle, Navigation, Smartphone, 
   Shield, Bell, Menu, X, Activity, Users, Settings, LogOut,
-  User, Plus, Edit, Trash2, Check, Eye
+  User, Plus
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import 'leaflet/dist/leaflet.css';
@@ -30,33 +30,28 @@ function Login({ onLogin }) {
     e.preventDefault();
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('email', email)
-      .eq('password', password)
-      .single();
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email,
+      password: password,
+    });
 
-    if (error || !data) {
+    if (error) {
       toast.error('Email o contraseña incorrectos');
       setLoading(false);
       return;
     }
 
-    if (!data.is_active) {
-      toast.error('Cuenta desactivada');
-      setLoading(false);
-      return;
-    }
-
-    await supabase
-      .from('users')
-      .update({ last_login: new Date().toISOString() })
-      .eq('id', data.id);
-
-    localStorage.setItem('user', JSON.stringify(data));
-    onLogin(data);
-    toast.success(`Bienvenido ${data.name}`);
+    // Guardar sesión
+    const user = {
+      id: data.user.id,
+      email: data.user.email,
+      name: data.user.email,
+      role: 'admin'
+    };
+    
+    localStorage.setItem('user', JSON.stringify(user));
+    onLogin(user);
+    toast.success(`Bienvenido ${data.user.email}`);
   };
 
   return (
@@ -130,56 +125,20 @@ function Dashboard({ user }) {
       )
       .subscribe();
 
-    const alertsChannel = supabase
-      .channel('alerts-changes')
-      .on('postgres_changes', 
-        { event: 'INSERT', schema: 'public', table: 'alerts' }, 
-        (payload) => {
-          const newAlert = payload.new;
-          setAlerts(prev => [newAlert, ...prev]);
-          toast.error(`🚨 ${newAlert.message}`, {
-            description: `${newAlert.tag_name} - ${moment(newAlert.timestamp).format('HH:mm:ss')}`,
-            duration: 10000
-          });
-        }
-      )
-      .subscribe();
-
     return () => {
       supabase.removeChannel(tagsChannel);
-      supabase.removeChannel(alertsChannel);
     };
   }, [user]);
 
   const loadData = async () => {
     try {
-      let tagsQuery = supabase.from('tags').select('*');
-      
-      if (user.role !== 'admin') {
-        const { data: assignments } = await supabase
-          .from('tag_assignments')
-          .select('tag_id')
-          .eq('user_id', user.id);
-        
-        const tagIds = assignments?.map(a => a.tag_id) || [];
-        tagsQuery = tagsQuery.in('id', tagIds);
-      }
-      
-      const { data: tagsData, error: tagsError } = await tagsQuery
+      const { data: tagsData, error } = await supabase
+        .from('tags')
+        .select('*')
         .order('created_at', { ascending: false });
       
-      if (tagsError) throw tagsError;
+      if (error) throw error;
       setTags(tagsData || []);
-
-      const { data: alertsData, error: alertsError } = await supabase
-        .from('alerts')
-        .select('*')
-        .order('timestamp', { ascending: false })
-        .limit(50);
-      
-      if (alertsError) throw alertsError;
-      setAlerts(alertsData || []);
-      
       setLoading(false);
     } catch (error) {
       console.error('Error:', error);
@@ -205,7 +164,7 @@ function Dashboard({ user }) {
   };
 
   const getIconForType = (type) => {
-    const icons = { car: '', person: '👤', package: '📦', bike: '🚴', truck: '🚚', pet: '🐕' };
+    const icons = { car: '', person: '👤', package: '', bike: '🚴', truck: '🚚', pet: '🐕' };
     return icons[type] || '';
   };
 
@@ -225,9 +184,7 @@ function Dashboard({ user }) {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-white">Dashboard</h1>
-          <p className="text-slate-400">
-            {user.role === 'admin' ? 'Panel de Administrador Maestro' : 'Mis Dispositivos'}
-          </p>
+          <p className="text-slate-400">Panel de Administrador Maestro</p>
         </div>
         <button onClick={loadData} className="bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-lg font-medium flex items-center gap-2">
           <Navigation size={20} /> Actualizar
@@ -276,7 +233,7 @@ function Dashboard({ user }) {
             </div>
             <div>
               <p className="text-slate-400 text-sm">Alertas</p>
-              <p className="text-2xl font-bold text-white">{alerts.length}</p>
+              <p className="text-2xl font-bold text-white">0</p>
             </div>
           </div>
         </div>
@@ -340,266 +297,6 @@ function Dashboard({ user }) {
           </div>
         ))}
       </div>
-    </div>
-  );
-}
-
-// ==================== ADMIN PANEL ====================
-function AdminPanel({ user }) {
-  const [activeTab, setActiveTab] = useState('users');
-  const [users, setUsers] = useState([]);
-  const [tags, setTags] = useState([]);
-  const [alarmSettings, setAlarmSettings] = useState([]);
-
-  useEffect(() => {
-    if (user.role !== 'admin') return;
-    loadUsers();
-    loadTags();
-    loadAlarmSettings();
-  }, [user]);
-
-  const loadUsers = async () => {
-    const { data } = await supabase.from('users').select('*').order('created_at', { ascending: false });
-    setUsers(data || []);
-  };
-
-  const loadTags = async () => {
-    const { data } = await supabase.from('tags').select('*').order('created_at', { ascending: false });
-    setTags(data || []);
-  };
-
-  const loadAlarmSettings = async () => {
-    const { data } = await supabase.from('alarm_settings').select('*, tags(name, tag_id)').order('created_at', { ascending: false });
-    setAlarmSettings(data || []);
-  };
-
-  const handleCreateUser = async (e) => {
-    e.preventDefault();
-    const form = e.target;
-    const newUser = {
-      email: form.email.value,
-      name: form.name.value,
-      password: form.password.value,
-      role: form.role.value,
-      is_active: true
-    };
-
-    const { error } = await supabase.from('users').insert([newUser]);
-    if (error) {
-      toast.error('Error al crear usuario');
-    } else {
-      toast.success('Usuario creado exitosamente');
-      form.reset();
-      loadUsers();
-    }
-  };
-
-  const handleAssignTag = async (userId, tagId) => {
-    const { error } = await supabase.from('tag_assignments').insert([{ user_id: userId, tag_id: tagId }]);
-    if (error) {
-      toast.error('Error al asignar tag');
-    } else {
-      toast.success('Tag asignado correctamente');
-    }
-  };
-
-  const handleUpdateAlarm = async (tagId, settings) => {
-    const { error } = await supabase
-      .from('alarm_settings')
-      .upsert({ tag_id: tagId, ...settings, updated_at: new Date().toISOString() });
-    
-    if (error) {
-      toast.error('Error al actualizar alarma');
-    } else {
-      toast.success('Configuración de alarma actualizada');
-      loadAlarmSettings();
-    }
-  };
-
-  if (user.role !== 'admin') {
-    return <div className="p-4 text-center text-red-500">Acceso denegado - Solo administradores</div>;
-  }
-
-  return (
-    <div className="p-4 max-w-7xl mx-auto space-y-6">
-      <div className="flex items-center gap-3">
-        <Shield className="text-emerald-500" size={32} />
-        <div>
-          <h1 className="text-3xl font-bold text-white">Panel de Administración</h1>
-          <p className="text-slate-400">Control total del sistema</p>
-        </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex space-x-2 border-b border-slate-700">
-        {[
-          { id: 'users', label: 'Usuarios', icon: <Users size={18} /> },
-          { id: 'tags', label: 'Tags', icon: <MapPin size={18} /> },
-          { id: 'alarms', label: 'Alarmas', icon: <Bell size={18} /> }
-        ].map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg ${
-              activeTab === tab.id ? 'bg-slate-800 text-emerald-500' : 'text-slate-400 hover:bg-slate-800'
-            }`}
-          >
-            {tab.icon} {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Users Tab */}
-      {activeTab === 'users' && (
-        <div className="space-y-6">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
-            <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
-              <Plus size={20} className="text-emerald-500" />
-              Crear Nuevo Usuario
-            </h2>
-            <form onSubmit={handleCreateUser} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input name="email" type="email" placeholder="Email" className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white" required />
-              <input name="name" type="text" placeholder="Nombre completo" className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white" required />
-              <input name="password" type="password" placeholder="Contraseña" className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white" required />
-              <select name="role" className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white">
-                <option value="user">Usuario Normal</option>
-                <option value="admin">Administrador</option>
-              </select>
-              <button type="submit" className="md:col-span-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg transition-colors">
-                Crear Usuario
-              </button>
-            </form>
-          </div>
-
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
-            <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
-              <Users size={20} className="text-emerald-500" />
-              Usuarios Existentes
-            </h2>
-            <div className="space-y-2">
-              {users.map(u => (
-                <div key={u.id} className="flex justify-between items-center p-4 bg-slate-900 rounded-lg">
-                  <div>
-                    <p className="text-white font-medium">{u.name}</p>
-                    <p className="text-slate-400 text-sm">{u.email}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`px-3 py-1 rounded-full text-xs ${u.role === 'admin' ? 'bg-purple-600' : 'bg-blue-600'} text-white`}>
-                      {u.role}
-                    </span>
-                    <span className={`px-3 py-1 rounded-full text-xs ${u.is_active ? 'bg-green-600' : 'bg-red-600'} text-white`}>
-                      {u.is_active ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Tags Tab */}
-      {activeTab === 'tags' && (
-        <div className="space-y-6">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
-            <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
-              <MapPin size={20} className="text-emerald-500" />
-              Asignar Tags a Usuarios
-            </h2>
-            <div className="space-y-4">
-              {tags.map(tag => (
-                <div key={tag.id} className="p-4 bg-slate-900 rounded-lg">
-                  <div className="flex justify-between items-center mb-2">
-                    <p className="text-white font-medium">{tag.name} ({tag.tag_id})</p>
-                    <span className={`px-3 py-1 rounded-full text-xs ${tag.status === 'active' ? 'bg-green-600' : 'bg-gray-600'} text-white`}>
-                      {tag.status}
-                    </span>
-                  </div>
-                  <select
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        handleAssignTag(e.target.value, tag.id);
-                        e.target.value = '';
-                      }
-                    }}
-                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white"
-                    defaultValue=""
-                  >
-                    <option value="">Asignar a usuario...</option>
-                    {users.filter(u => u.role !== 'admin').map(u => (
-                      <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
-                    ))}
-                  </select>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Alarms Tab */}
-      {activeTab === 'alarms' && (
-        <div className="space-y-6">
-          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
-            <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
-              <Bell size={20} className="text-emerald-500" />
-              Configuración de Alarmas por Tag
-            </h2>
-            <p className="text-slate-400 mb-4">Configura las alarmas de movimiento, velocidad y batería para cada dispositivo</p>
-            <div className="space-y-4">
-              {alarmSettings.map(setting => (
-                <div key={setting.id} className="p-4 bg-slate-900 rounded-lg space-y-4">
-                  <div className="flex justify-between items-center border-b border-slate-700 pb-2">
-                    <p className="text-white font-medium">{setting.tags?.name} ({setting.tags?.tag_id})</p>
-                    <Settings size={18} className="text-slate-400" />
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label className="text-slate-400 text-xs mb-1 block flex items-center gap-1">
-                        <MapPin size={12} /> Movimiento (metros)
-                      </label>
-                      <input
-                        type="number"
-                        defaultValue={setting.movement_threshold_meters}
-                        onChange={(e) => handleUpdateAlarm(setting.tag_id, {
-                          movement_threshold_meters: parseInt(e.target.value)
-                        })}
-                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-slate-400 text-xs mb-1 block flex items-center gap-1">
-                        <Activity size={12} /> Velocidad (km/h)
-                      </label>
-                      <input
-                        type="number"
-                        defaultValue={setting.speed_threshold_kmh}
-                        onChange={(e) => handleUpdateAlarm(setting.tag_id, {
-                          speed_threshold_kmh: parseFloat(e.target.value)
-                        })}
-                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-slate-400 text-xs mb-1 block flex items-center gap-1">
-                        <Battery size={12} /> Batería baja (%)
-                      </label>
-                      <input
-                        type="number"
-                        defaultValue={setting.battery_low_threshold}
-                        onChange={(e) => handleUpdateAlarm(setting.tag_id, {
-                          battery_low_threshold: parseInt(e.target.value)
-                        })}
-                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -707,7 +404,7 @@ function MobileTracking({ user }) {
             </div>
             {position && (
               <div className="text-left text-sm text-slate-300 space-y-1">
-                <p>📍 Lat: {position.latitude.toFixed(6)}</p>
+                <p> Lat: {position.latitude.toFixed(6)}</p>
                 <p>📍 Lng: {position.longitude.toFixed(6)}</p>
                 <p>🚀 Vel: {position.speed} m/s</p>
               </div>
@@ -722,18 +419,6 @@ function MobileTracking({ user }) {
           </button>
         )}
       </div>
-
-      <div className="bg-blue-600/10 border border-blue-500/30 rounded-lg p-4 text-left">
-        <h3 className="text-blue-400 font-semibold mb-2 flex items-center gap-2">
-          <Navigation size={18} /> Características
-        </h3>
-        <ul className="text-sm text-slate-400 space-y-1">
-          <li>✅ Envía ubicación cada 5 segundos</li>
-          <li>✅ Funciona en segundo plano</li>
-          <li>✅ Bajo consumo de batería</li>
-          <li>✅ Reconexión automática</li>
-        </ul>
-      </div>
     </div>
   );
 }
@@ -746,7 +431,6 @@ function Navbar({ user, onLogout }) {
   const links = [
     { path: '/', label: 'Dashboard', icon: <MapPin size={18} /> },
     { path: '/mobile', label: 'Tracking Móvil', icon: <Smartphone size={18} /> },
-    ...(user.role === 'admin' ? [{ path: '/admin', label: 'Admin', icon: <Shield size={18} /> }] : [])
   ];
 
   return (
@@ -769,8 +453,8 @@ function Navbar({ user, onLogout }) {
             ))}
             <div className="flex items-center gap-2 ml-4 pl-4 border-l border-slate-700">
               <User size={18} className="text-slate-400" />
-              <span className="text-slate-300 text-sm">{user.name}</span>
-              {user.role === 'admin' && <span className="px-2 py-0.5 bg-purple-600 text-white text-xs rounded-full">ADMIN</span>}
+              <span className="text-slate-300 text-sm">{user.email}</span>
+              <span className="px-2 py-0.5 bg-purple-600 text-white text-xs rounded-full">ADMIN</span>
               <button onClick={onLogout} className="text-slate-400 hover:text-red-500">
                 <LogOut size={18} />
               </button>
@@ -811,7 +495,8 @@ export default function App() {
     }
   }, []);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     localStorage.removeItem('user');
     setUser(null);
     toast.success('Sesión cerrada correctamente');
@@ -829,7 +514,6 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard user={user} />} />
           <Route path="/mobile" element={<MobileTracking user={user} />} />
-          <Route path="/admin" element={<AdminPanel user={user} />} />
         </Routes>
       </div>
     </BrowserRouter>
