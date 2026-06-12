@@ -5,7 +5,7 @@ import { Toaster, toast } from 'sonner';
 import { 
   MapPin, Battery, AlertTriangle, Navigation, Smartphone, 
   Shield, Bell, Menu, X, Activity, Users, Settings, LogOut,
-  User, Plus
+  User, Plus, Edit, Trash2, Check, Eye
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import 'leaflet/dist/leaflet.css';
@@ -41,7 +41,6 @@ function Login({ onLogin }) {
       return;
     }
 
-    // Guardar sesión
     const user = {
       id: data.user.id,
       email: data.user.email,
@@ -301,6 +300,253 @@ function Dashboard({ user }) {
   );
 }
 
+// ==================== ADMIN PANEL ====================
+function AdminPanel({ user }) {
+  const [activeTab, setActiveTab] = useState('users');
+  const [users, setUsers] = useState([]);
+  const [tags, setTags] = useState([]);
+  const [alarmSettings, setAlarmSettings] = useState([]);
+
+  useEffect(() => {
+    loadUsers();
+    loadTags();
+    loadAlarmSettings();
+  }, [user]);
+
+  const loadUsers = async () => {
+    const { data } = await supabase.auth.admin.listUsers();
+    setUsers(data.users || []);
+  };
+
+  const loadTags = async () => {
+    const { data } = await supabase.from('tags').select('*').order('created_at', { ascending: false });
+    setTags(data || []);
+  };
+
+  const loadAlarmSettings = async () => {
+    const { data } = await supabase.from('alarm_settings').select('*, tags(name, tag_id)').order('created_at', { ascending: false });
+    setAlarmSettings(data || []);
+  };
+
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    const form = e.target;
+    
+    const { data, error } = await supabase.auth.admin.createUser({
+      email: form.email.value,
+      password: form.password.value,
+      email_confirm: true,
+    });
+
+    if (error) {
+      toast.error('Error al crear usuario: ' + error.message);
+    } else {
+      toast.success('Usuario creado exitosamente');
+      form.reset();
+      loadUsers();
+    }
+  };
+
+  const handleAssignTag = async (userEmail, tagId) => {
+    const { error } = await supabase
+      .from('tags')
+      .update({ assigned_to_email: userEmail })
+      .eq('id', tagId);
+    
+    if (error) {
+      toast.error('Error al asignar tag');
+    } else {
+      toast.success('Tag asignado correctamente');
+      loadTags();
+    }
+  };
+
+  const handleUpdateAlarm = async (tagId, settings) => {
+    const { error } = await supabase
+      .from('alarm_settings')
+      .upsert({ tag_id: tagId, ...settings, updated_at: new Date().toISOString() });
+    
+    if (error) {
+      toast.error('Error al actualizar alarma');
+    } else {
+      toast.success('Configuración de alarma actualizada');
+      loadAlarmSettings();
+    }
+  };
+
+  return (
+    <div className="p-4 max-w-7xl mx-auto space-y-6">
+      <div className="flex items-center gap-3">
+        <Shield className="text-emerald-500" size={32} />
+        <div>
+          <h1 className="text-3xl font-bold text-white">Panel de Administración</h1>
+          <p className="text-slate-400">Control total del sistema</p>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex space-x-2 border-b border-slate-700">
+        {[
+          { id: 'users', label: 'Usuarios', icon: <Users size={18} /> },
+          { id: 'tags', label: 'Tags', icon: <MapPin size={18} /> },
+          { id: 'alarms', label: 'Alarmas', icon: <Bell size={18} /> }
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-t-lg ${
+              activeTab === tab.id ? 'bg-slate-800 text-emerald-500' : 'text-slate-400 hover:bg-slate-800'
+            }`}
+          >
+            {tab.icon} {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Users Tab */}
+      {activeTab === 'users' && (
+        <div className="space-y-6">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+            <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+              <Plus size={20} className="text-emerald-500" />
+              Crear Nuevo Usuario
+            </h2>
+            <form onSubmit={handleCreateUser} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input name="email" type="email" placeholder="Email" className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white" required />
+              <input name="password" type="password" placeholder="Contraseña" className="bg-slate-900 border border-slate-700 rounded-lg px-4 py-3 text-white" required />
+              <button type="submit" className="md:col-span-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg transition-colors">
+                Crear Usuario
+              </button>
+            </form>
+          </div>
+
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+            <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+              <Users size={20} className="text-emerald-500" />
+              Usuarios Existentes
+            </h2>
+            <div className="space-y-2">
+              {users.map(u => (
+                <div key={u.id} className="flex justify-between items-center p-4 bg-slate-900 rounded-lg">
+                  <div>
+                    <p className="text-white font-medium">{u.email}</p>
+                  </div>
+                  <span className="px-3 py-1 rounded-full text-xs bg-blue-600 text-white">
+                    {u.email === 'p90058@gmail.com' ? 'ADMIN' : 'USER'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tags Tab */}
+      {activeTab === 'tags' && (
+        <div className="space-y-6">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+            <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+              <MapPin size={20} className="text-emerald-500" />
+              Asignar Tags a Usuarios
+            </h2>
+            <div className="space-y-4">
+              {tags.map(tag => (
+                <div key={tag.id} className="p-4 bg-slate-900 rounded-lg">
+                  <div className="flex justify-between items-center mb-2">
+                    <p className="text-white font-medium">{tag.name} ({tag.tag_id})</p>
+                    <span className={`px-3 py-1 rounded-full text-xs ${tag.status === 'active' ? 'bg-green-600' : 'bg-gray-600'} text-white`}>
+                      {tag.status}
+                    </span>
+                  </div>
+                  <select
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        handleAssignTag(e.target.value, tag.id);
+                        e.target.value = '';
+                      }
+                    }}
+                    className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white"
+                    defaultValue=""
+                  >
+                    <option value="">Asignar a usuario...</option>
+                    {users.filter(u => u.email !== 'p90058@gmail.com').map(u => (
+                      <option key={u.id} value={u.email}>{u.email}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Alarms Tab */}
+      {activeTab === 'alarms' && (
+        <div className="space-y-6">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6">
+            <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+              <Bell size={20} className="text-emerald-500" />
+              Configuración de Alarmas por Tag
+            </h2>
+            <p className="text-slate-400 mb-4">Configura las alarmas de movimiento, velocidad y batería para cada dispositivo</p>
+            <div className="space-y-4">
+              {alarmSettings.map(setting => (
+                <div key={setting.id} className="p-4 bg-slate-900 rounded-lg space-y-4">
+                  <div className="flex justify-between items-center border-b border-slate-700 pb-2">
+                    <p className="text-white font-medium">{setting.tags?.name} ({setting.tags?.tag_id})</p>
+                    <Settings size={18} className="text-slate-400" />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className="text-slate-400 text-xs mb-1 block flex items-center gap-1">
+                        <MapPin size={12} /> Movimiento (metros)
+                      </label>
+                      <input
+                        type="number"
+                        defaultValue={setting.movement_threshold_meters}
+                        onChange={(e) => handleUpdateAlarm(setting.tag_id, {
+                          movement_threshold_meters: parseInt(e.target.value)
+                        })}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-400 text-xs mb-1 block flex items-center gap-1">
+                        <Activity size={12} /> Velocidad (km/h)
+                      </label>
+                      <input
+                        type="number"
+                        defaultValue={setting.speed_threshold_kmh}
+                        onChange={(e) => handleUpdateAlarm(setting.tag_id, {
+                          speed_threshold_kmh: parseFloat(e.target.value)
+                        })}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-slate-400 text-xs mb-1 block flex items-center gap-1">
+                        <Battery size={12} /> Batería baja (%)
+                      </label>
+                      <input
+                        type="number"
+                        defaultValue={setting.battery_low_threshold}
+                        onChange={(e) => handleUpdateAlarm(setting.tag_id, {
+                          battery_low_threshold: parseInt(e.target.value)
+                        })}
+                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ==================== MOBILE TRACKING ====================
 function MobileTracking({ user }) {
   const [tracking, setTracking] = useState(false);
@@ -431,6 +677,7 @@ function Navbar({ user, onLogout }) {
   const links = [
     { path: '/', label: 'Dashboard', icon: <MapPin size={18} /> },
     { path: '/mobile', label: 'Tracking Móvil', icon: <Smartphone size={18} /> },
+    { path: '/admin', label: 'Admin', icon: <Shield size={18} /> },
   ];
 
   return (
@@ -514,6 +761,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Dashboard user={user} />} />
           <Route path="/mobile" element={<MobileTracking user={user} />} />
+          <Route path="/admin" element={<AdminPanel user={user} />} />
         </Routes>
       </div>
     </BrowserRouter>
